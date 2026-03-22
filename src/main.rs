@@ -4,7 +4,7 @@ mod command;
 mod navigation;
 mod action;
 
-use action::Action;
+use action::{Action, BeforeChange};
 use style::{Style, Color, StyledChar};
 use command::Command;
 use std::io::{BufWriter, Read, Write, stderr, stdin, stdout};
@@ -93,6 +93,12 @@ fn main() {
 					cursor_pos,
 					Color { r: 0, g: 0, b: 0 },
 				),
+
+			Command::Erase =>
+				erase_char(&mut chars,
+					&mut actions,
+					cursor_pos
+				),
 		}
 	}
 }
@@ -112,8 +118,25 @@ fn set_bg_color(
 	);
 
 	actions.push(Action {
-	    pos,
-	    background_old,
+		pos,
+		prev: BeforeChange::BgColor(background_old)
+	});
+}
+
+fn erase_char(
+	chars: &mut Vec<StyledChar>,
+	actions: &mut Vec<Action>,
+	pos: usize,
+) {
+	// assume it doesn't out of bound
+	let styled_char = chars.get_mut(pos).unwrap();
+
+	let old_char = styled_char.c;
+	styled_char.c = ' ';
+
+	actions.push(Action {
+		pos,
+		prev: BeforeChange::Char(old_char),
 	});
 }
 

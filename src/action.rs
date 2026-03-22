@@ -2,7 +2,12 @@ use crate::{Color, StyledChar};
 
 pub struct Action {
 	pub pos: usize,
-	pub background_old: Option<Color>,
+	pub prev: BeforeChange,
+}
+
+pub enum BeforeChange {
+	BgColor(Option<Color>),
+	Char(char),
 }
 
 pub fn try_undo(
@@ -12,9 +17,16 @@ pub fn try_undo(
 	if let Some(action) = actions.pop() {
 		// chars doesn't change after initial read
 		// actions shouldn't be out of bounds (ideally)
-		chars
+		let styled_char = chars
 			.get_mut(action.pos)
-			.unwrap()
-			.style.background = action.background_old;
+			.unwrap();
+
+		match action.prev {
+			BeforeChange::BgColor(old_bg) =>
+				styled_char.style.background = old_bg,
+
+			BeforeChange::Char(old_char) =>
+				styled_char.c = old_char,
+		}
 	}
 }
