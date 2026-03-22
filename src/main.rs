@@ -1,0 +1,160 @@
+mod style;
+mod parser;
+mod command;
+mod navigation;
+mod action;
+
+use action::Action;
+use style::{Style, Color, StyledChar};
+use command::Command;
+use std::io::{BufWriter, Read, Write, stderr, stdin, stdout};
+use std::fs::File;
+use std::mem;
+
+const STYLE_SELECTED: Style = Style {
+	foreground: Some(Color { r: 255, g: 0, b: 0 }),
+	background: Some(Color { r: 127, g: 0, b: 0 }),
+};
+
+fn filter_text(text: &str) -> String {
+	// trim off chafa's inversion/background trickery
+	// apparently it does something useful, but not in my terminal
+	text.replace(
+		"\x1b[7m\x1b[38;2;0;0;0m \x1b[0m",
+		"\x1b[38;2;255;255;255;48;2;0;0;0m "
+	)
+
+	// replace ESC[0m with explicit color specification
+	.replace(
+		"\x1b[0m",
+		"\x1b[38;2;255;255;255;48;2;0;0;0m"
+	)
+
+	// remove ESC[?25l and ESC[?25h
+	.replace("\x1b[?25l", "")
+	.replace("\x1b[?25h", "")
+}
+
+fn main() {
+	let mut text = String::new();
+
+	stdin().read_to_string(&mut text).expect("failed to read stdin");
+
+	text = filter_text(&text);
+	let mut chars = parser::digest(&text);
+
+	let mut cursor_pos: usize = 0;
+	let mut actions: Vec<Action> = Vec::new();
+	let stderr_buf = &mut BufWriter::new(stderr());
+
+	term_canonical_mode(false);
+
+
+	loop {
+		write!(stderr_buf, "\x1b[2J").expect("couldn't write");
+		render(stderr_buf, &chars, Some(cursor_pos));
+
+		match command::read() {
+			Command::Exit => {
+				term_canonical_mode(true);
+
+				render(&mut stdout(), &chars, None);
+
+				std::process::exit(0);
+			}
+
+			Command::MoveRight =>
+				cursor_pos = navigation::right(&chars, cursor_pos),
+
+			Command::MoveLeft =>
+				cursor_pos = navigation::left(&chars, cursor_pos),
+
+			Command::MoveDown =>
+				cursor_pos = navigation::down(&chars, cursor_pos),
+
+			Command::MoveUp =>
+				cursor_pos = navigation::up(&chars, cursor_pos),
+
+			Command::Undo =>
+				action::try_undo(&mut chars, &mut actions),
+
+			Command::SetBlack =>
+				set_bg_color(
+					&mut chars,
+					&mut actions,
+					cursor_pos,
+					Color { r: 0, g: 0, b: 1 },
+				),
+
+			Command::SetTransparent =>
+				set_bg_color(
+					&mut chars,
+					&mut actions,
+					cursor_pos,
+					Color { r: 0, g: 0, b: 0 },
+				),
+		}
+	}
+}
+
+fn set_bg_color(
+	chars: &mut Vec<StyledChar>,
+	actions: &mut Vec<Action>,
+	pos: usize,
+	color: Color,
+) {
+	// assume it doesn't out of bound
+	let styled_char = chars.get_mut(pos).unwrap();
+
+	let background_old = mem::replace(
+		&mut styled_char.style.background,
+		Some(color),
+	);
+
+	actions.push(Action {
+	    pos,
+	    background_old,
+	});
+}
+
+fn term_canonical_mode(canon_mode: bool) {
+	let tty = File::open("/dev/tty")
+        .expect("no controlling terminal");
+
+	let fd = std::os::fd::AsRawFd::as_raw_fd(&tty);
+
+	let mut term = termios::Termios::from_fd(fd)
+		.expect("couldn't set terminal attributes");
+
+	if canon_mode {
+		term.c_lflag |= termios::ICANON | termios::ECHO;
+	} else {
+		term.c_lflag &= !(termios::ICANON | termios::ECHO);
+	}
+
+	termios::tcsetattr(fd, termios::TCSANOW, &term)
+		.expect("couldn't set terminal attributes");
+}
+
+fn render<W>(
+	writer: &mut W,
+	chars: &[StyledChar],
+	cursor_pos: Option<usize>
+) 
+	where W: Write
+{
+	for (idx, styled_char) in chars.iter().enumerate() {
+		if Some(idx) == cursor_pos {
+			let to_print = StyledChar {
+				c: styled_char.c,
+				style: STYLE_SELECTED,
+			};
+
+			write!(writer, "{to_print}").expect("couldn't write");
+		} else {
+			write!(writer, "{styled_char}").expect("couldn't write");
+		}
+	}
+
+	writer.flush().expect("couldn't flush writer");
+}
