@@ -7,7 +7,7 @@ mod action;
 use action::{Action, BeforeChange};
 use style::{Style, Color, StyledChar};
 use command::Command;
-use std::io::{BufWriter, Read, Write, stderr, stdin, stdout};
+use std::io::{BufWriter, Read, Write, stderr, stdin, Stderr};
 use std::fs::File;
 use std::mem;
 use std::collections::HashMap;
@@ -99,13 +99,13 @@ fn main() {
 
 	loop {
 		write!(stderr_buf, "\x1b[2J").expect("couldn't write");
-		render(stderr_buf, &chars, Some(cursor_pos));
+		render_preview(stderr_buf, &chars, cursor_pos);
 
 		match command::read() {
 			Command::Exit => {
 				term_canonical_mode(true);
 
-				render(&mut stdout(), &chars, None);
+				render_final(chars);
 
 				std::process::exit(0);
 			}
@@ -241,15 +241,13 @@ fn term_canonical_mode(canon_mode: bool) {
 		.expect("couldn't set terminal attributes");
 }
 
-fn render<W>(
-	writer: &mut W,
+fn render_preview(
+	writer: &mut BufWriter<Stderr>,
 	chars: &[StyledChar],
-	cursor_pos: Option<usize>
-) 
-	where W: Write
-{
+	cursor_pos: usize,
+) {
 	for (idx, styled_char) in chars.iter().enumerate() {
-		if Some(idx) == cursor_pos {
+		if idx == cursor_pos {
 			let to_print = StyledChar {
 				c: styled_char.c,
 				style: STYLE_SELECTED,
@@ -262,4 +260,56 @@ fn render<W>(
 	}
 
 	writer.flush().expect("couldn't flush writer");
+}
+
+fn render_final(chars: Vec<StyledChar>) {
+	let mut prev_style: Style = Style::default();
+
+	print!("\x1b[?25l");
+
+	for StyledChar { c, style } in chars {
+		if style.foreground != prev_style.foreground
+		&& style.background != prev_style.background
+		{
+			// all the styles emitted are Some()'s
+			print!("\x1b[38;2;{};{};{};48;2;{};{};{}m",
+				style.foreground.as_ref().unwrap().r,
+				style.foreground.as_ref().unwrap().g,
+				style.foreground.as_ref().unwrap().b,
+				style.background.as_ref().unwrap().r,
+				style.background.as_ref().unwrap().g,
+				style.background.as_ref().unwrap().b,
+			);
+
+			prev_style = style;
+		}
+		else if style.foreground != prev_style.foreground
+			 && style.background == prev_style.background
+		{
+			// all the styles emitted are Some()'s
+			print!("\x1b[38;2;{};{};{}m",
+				style.foreground.as_ref().unwrap().r,
+				style.foreground.as_ref().unwrap().g,
+				style.foreground.as_ref().unwrap().b,
+			);
+
+			prev_style = style;
+		}
+		else if style.foreground == prev_style.foreground
+			 && style.background != prev_style.background
+		{
+			// all the styles emitted are Some()'s
+			print!("\x1b[48;2;{};{};{}m",
+				style.background.as_ref().unwrap().r,
+				style.background.as_ref().unwrap().g,
+				style.background.as_ref().unwrap().b,
+			);
+
+			prev_style = style;
+		}
+
+		print!("{c}");		
+	}
+
+	print!("\x1b[?25h");
 }
