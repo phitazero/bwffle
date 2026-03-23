@@ -14,6 +14,6 @@ WASD/arrow keys - navigation
 b - set to black  
 t - set to transparent  
 e - erase character  
-i - invert
+i - invert  
 z/u - undo  
 q - render the modified logo into stdout (intermediate renders are into stderr) and exit  
