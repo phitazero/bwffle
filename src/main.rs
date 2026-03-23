@@ -10,11 +10,58 @@ use command::Command;
 use std::io::{BufWriter, Read, Write, stderr, stdin, stdout};
 use std::fs::File;
 use std::mem;
+use std::collections::HashMap;
+use std::sync::LazyLock;
 
 const STYLE_SELECTED: Style = Style {
 	foreground: Some(Color { r: 255, g: 0, b: 0 }),
 	background: Some(Color { r: 127, g: 0, b: 0 }),
 };
+
+const INVERTED: LazyLock<HashMap<char, char>> =
+	LazyLock::new(|| maplit::hashmap! {
+	'\u{2580}'  => '\u{2584}',
+	'\u{2584}'  => '\u{2580}',
+	'\u{2581}'  => '\u{1fb86}',
+	'\u{1fb86}' => '\u{2581}',
+	'\u{2582}'  => '\u{1fb85}',
+	'\u{1fb85}' => '\u{2582}',
+	'\u{2583}'  => '\u{1fb84}',
+	'\u{1fb84}' => '\u{2583}',
+	'\u{2585}'  => '\u{1fb83}',
+	'\u{1fb83}' => '\u{2585}',
+	'\u{2586}'  => '\u{1fb82}',
+	'\u{1fb82}' => '\u{2586}',
+	'\u{2587}'  => '\u{2594}',
+	'\u{2594}'  => '\u{2587}',
+	'\u{2588}'  => '\u{20}',
+	'\u{20}'    => '\u{2588}',
+	'\u{2589}'  => '\u{2595}',
+	'\u{2595}'  => '\u{2589}',
+	'\u{258a}'  => '\u{1fb87}',
+	'\u{1fb87}' => '\u{258a}',
+	'\u{258b}'  => '\u{1fb88}',
+	'\u{1fb88}' => '\u{258b}',
+	'\u{258c}'  => '\u{2590}',
+	'\u{2590}'  => '\u{258c}',
+	'\u{258d}'  => '\u{1fb89}',
+	'\u{1fb89}' => '\u{258d}',
+	'\u{258e}'  => '\u{1fb8a}',
+	'\u{1fb8a}' => '\u{258e}',
+	'\u{258f}'  => '\u{1fb8b}',
+	'\u{1fb8b}' => '\u{258f}',
+	'\u{2596}'  => '\u{259c}',
+	'\u{259c}'  => '\u{2596}',
+	'\u{2597}'  => '\u{259b}',
+	'\u{259b}'  => '\u{2597}',
+	'\u{2598}'  => '\u{259f}',
+	'\u{259f}'  => '\u{2598}',
+	'\u{2599}'  => '\u{259d}',
+	'\u{259d}'  => '\u{2599}',
+	'\u{259a}'  => '\u{259e}',
+	'\u{259e}'  => '\u{259a}',
+});
+
 
 fn filter_text(text: &str) -> String {
 	// trim off chafa's inversion/background trickery
@@ -99,6 +146,14 @@ fn main() {
 					&mut actions,
 					cursor_pos
 				),
+
+			Command::Invert => {
+				invert(
+					&mut chars,
+					&mut actions,
+					cursor_pos,
+				);
+			},
 		}
 	}
 }
@@ -140,9 +195,36 @@ fn erase_char(
 	});
 }
 
+fn invert(
+	chars: &mut Vec<StyledChar>,
+	actions: &mut Vec<Action>,
+	pos: usize,
+) {
+	let styled_char = chars.get_mut(pos).unwrap();
+
+	let Some(&replacement) = INVERTED.get(&styled_char.c) else {
+		return;
+	};
+
+	mem::swap(
+		&mut styled_char.style.foreground,
+		&mut styled_char.style.background,
+	);
+
+	let old_char = mem::replace(
+		&mut styled_char.c,
+		replacement,
+	);
+
+	actions.push(Action {
+		pos,
+		prev: BeforeChange::Uninverted(old_char),
+	});
+}
+
 fn term_canonical_mode(canon_mode: bool) {
 	let tty = File::open("/dev/tty")
-        .expect("no controlling terminal");
+		.expect("no controlling terminal");
 
 	let fd = std::os::fd::AsRawFd::as_raw_fd(&tty);
 

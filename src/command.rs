@@ -13,6 +13,7 @@ pub fn read() -> Command {
 			KeyCode::Char('t') => return Command::SetTransparent,
 			KeyCode::Char('b') => return Command::SetBlack,
 			KeyCode::Char('e') => return Command::Erase,
+			KeyCode::Char('i') => return Command::Invert,
 			KeyCode::Char('d') | KeyCode::Right
 				=> return Command::MoveRight,
 			KeyCode::Char('a') | KeyCode::Left
@@ -37,6 +38,7 @@ pub enum Command {
 	Exit,
 	SetBlack,
 	SetTransparent,
+	Invert,
 	Erase,
 	MoveRight,
 	MoveLeft,

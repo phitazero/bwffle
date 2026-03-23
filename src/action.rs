@@ -1,4 +1,5 @@
 use crate::{Color, StyledChar};
+use std::mem;
 
 pub struct Action {
 	pub pos: usize,
@@ -8,6 +9,7 @@ pub struct Action {
 pub enum BeforeChange {
 	BgColor(Option<Color>),
 	Char(char),
+	Uninverted(char),
 }
 
 pub fn try_undo(
@@ -27,6 +29,15 @@ pub fn try_undo(
 
 			BeforeChange::Char(old_char) =>
 				styled_char.c = old_char,
+
+			BeforeChange::Uninverted(old_char) => {
+				styled_char.c = old_char;
+
+				mem::swap(
+					&mut styled_char.style.foreground,
+					&mut styled_char.style.background,
+				);
+			}
 		}
 	}
 }
